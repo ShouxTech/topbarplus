@@ -1,8 +1,8 @@
-export type IconState = "Deselected" | "Selected" | "Viewing";
-export type IconAlignment = "Left" | "Center" | "Right";
+export type IconState = 'Deselected' | 'Selected' | 'Viewing';
+export type IconAlignment = 'Left' | 'Center' | 'Right';
 
 type FontFamilyLink<T extends string> = `rbxasset://fonts/families/${T}.json`;
-type AllFontNames = keyof Omit<typeof Enum.Font, "GetEnumItems">;
+type AllFontNames = keyof Omit<typeof Enum.Font, 'GetEnumItems'>;
 type IconEventName = keyof IconEvents;
 
 type InferSignalCallback<T> = T extends RBXScriptSignal<infer A> ? A : never;
@@ -11,12 +11,14 @@ type InferEventCallback<T extends IconEventName> = (
 	...rest: Parameters<InferSignalCallback<IconEvents[T]>>
 ) => void;
 
+type FromSource = 'User' | 'OneClick' | 'AutoDeselect' | 'HideParentFeature' | 'Overflow' | undefined;
+
 export type IconUID = string;
 
 interface IconEvents {
-	selected: RBXScriptSignal<() => void>;
-	deselected: RBXScriptSignal<() => void>;
-	toggled: RBXScriptSignal<(isSelected: boolean) => void>;
+	selected: RBXScriptSignal<(fromSource: FromSource) => void>;
+	deselected: RBXScriptSignal<(fromSource: FromSource) => void>;
+	toggled: RBXScriptSignal<(isSelected: boolean, fromSource: FromSource) => void>;
 	viewingStarted: RBXScriptSignal<() => void>;
 	viewingEnded: RBXScriptSignal<() => void>;
 	notified: RBXScriptSignal<() => void>;
@@ -34,7 +36,7 @@ interface WidgetInstances {
 	IconImageCorner: UICorner;
 	IconSpot: Frame;
 	IconSpotGradient: UIGradient;
-	IconOverlay: WidgetInstances["IconSpot"];
+	IconOverlay: WidgetInstances['IconSpot'];
 	IconGradient: UIGradient;
 	ClickRegion: TextButton;
 	Menu: ScrollingFrame;
@@ -142,7 +144,7 @@ interface Icon extends IconEvents {
 	/** @chainable @toggleable */
 	setCornerRadius(scale: number, offset: number, iconState?: IconState): this;
 	/**
-	 * This enables you to set the icon to the "Left" (default), "Center" or "Right" side of the screen.
+	 * This enables you to set the icon to the 'Left' (default), 'Center' or 'Right' side of the screen.
 	 * See [alignments](https://1foreverhd.github.io/TopbarPlus/features/#alignments) for more details.
 	 * @chainable
 	 */
@@ -170,10 +172,10 @@ interface Icon extends IconEvents {
 	setTextSize(size: number, iconState?: IconState): this;
 	/**
 	 * Sets the labels FontFace.
-	 * Font can be a font family name (such as "Creepster"),
+	 * Font can be a font family name (such as 'Creepster'),
 	 * a font enum (such as Enum.Font.Bangers),
 	 * a font ID (such as 12187370928)
-	 * or font family link (such as "rbxasset://fonts/families/Sarpanch.json").
+	 * or font family link (such as 'rbxasset://fonts/families/Sarpanch.json').
 	 * @chainable @toggleable
 	 */
 	setTextFont(
