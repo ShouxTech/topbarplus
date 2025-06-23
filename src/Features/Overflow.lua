@@ -14,6 +14,8 @@ local currentCamera = workspace.CurrentCamera
 local overflowIcons = {}
 local overflowIconUIDs = {}
 local Utility = require(script.Parent.Parent.Utility)
+local beginCheckingCenterIcons = false
+local beganSecondaryCenterCheck = false
 local Icon
 
 
@@ -48,11 +50,15 @@ function Overflow.start(incomingIcon)
 		Overflow.updateBoundary("Left")
 		Overflow.updateBoundary("Right")
 	end)
-	task.delay(1, function()
+	task.delay(0.5, function()
+		beginOverflow = true
+		updateBoundaries()
+	end)
+	task.delay(2, function()
 		-- This is essential to prevent central icons begin added
 		-- left or right due to incomplete UIListLayout calculations
 		-- within the first few frames
-		beginOverflow = true
+		beginCheckingCenterIcons = true
 		updateBoundaries()
 	end)
 	Icon.iconAdded:Connect(updateBoundaries)
@@ -83,8 +89,6 @@ function Overflow.updateAvailableIcons(alignment)
 
 	-- We only track items that are directly on the topbar (i.e. not within a parent icon)
 	local ourTotal = 0
-	local holder = holders[alignment]
-	local holderUIList = holder.UIListLayout
 	local ourOrderedIcons = {}
 	for _, icon in pairs(iconsDict) do
 		local parentUID = icon.parentIconUID
@@ -121,6 +125,7 @@ function Overflow.updateAvailableIcons(alignment)
 		elseif hasParentA then
 			return true
 		end
+		return nil
 	end)
 
 	-- Finish up
@@ -132,7 +137,6 @@ end
 function Overflow.getRealXPositions(alignment, orderedIcons)
 	-- We calculate the the absolute position of icons instead of reading
 	-- directly to determine where they would be if not within an overflow
-	local joinOverflow = false
 	local isLeft = alignment == "Left"
 	local holder = holders[alignment]
 	local holderXPos = holder.AbsolutePosition.X
@@ -182,7 +186,7 @@ function Overflow.updateBoundary(alignment)
 	
 	-- These are the icons with menus which icons will be moved into
 	-- when overflowing
-	local isCentral = alignment == "Central"
+	local isCentral = alignment == "Center"
 	local isLeft = alignment == "Left"
 	local isRight = not isLeft
 	local overflowIcon = overflowIcons[alignment]
@@ -210,7 +214,6 @@ function Overflow.updateBoundary(alignment)
 	local oppositeOverflowIcon = overflowIcons[oppositeAlignment]
 	local boundary = (isLeft and holderXPos + holderXSize) or holderXPos
 	if nearestOppositeIcon then
-		local oppositeEndWidget = nearestOppositeIcon.widget
 		local oppositeRealXPositions = Overflow.getRealXPositions(oppositeAlignment, oppositeOrderedIcons)
 		local oppositeX = oppositeRealXPositions[nearestOppositeIcon.UID]
 		local oppositeXSize = Overflow.getWidth(nearestOppositeIcon)
@@ -221,29 +224,57 @@ function Overflow.updateBoundary(alignment)
 	-- right alignment) of the central icons group to see if we need to change
 	-- the boundary (if the central icon boundary is smaller than the alignment
 	-- boundary then we use the central)
-	local centerOrderedIcons = Overflow.getAvailableIcons("Center")
-	local centerPos = (isLeft and 1) or #centerOrderedIcons
-	local nearestCenterIcon = centerOrderedIcons[centerPos]
+	local totalChecks = 0
 	local usingNearestCenter = false
-	if nearestCenterIcon and not nearestCenterIcon.hasRelocatedInOverflow then
-		local ourNearestIcon = (isLeft and ourOrderedIcons[#ourOrderedIcons]) or (isRight and ourOrderedIcons[1])
-		local centralNearestXPos = nearestCenterIcon.widget.AbsolutePosition.X
-		local ourNearestXPos = ourNearestIcon.widget.AbsolutePosition.X
-		local ourNearestXSize = Overflow.getWidth(ourNearestIcon)
-		local centerBoundary = (isLeft and centralNearestXPos-BOUNDARY_GAP) or centralNearestXPos + Overflow.getWidth(nearestCenterIcon) + BOUNDARY_GAP
-		local removeBoundary = (isLeft and ourNearestXPos + ourNearestXSize) or ourNearestXPos
-		if isLeft then
-			if centerBoundary < removeBoundary then
-				nearestCenterIcon:align("Left")
-				nearestCenterIcon.hasRelocatedInOverflow = true
+	local function checkToShiftCentralIcon()
+		local centerOrderedIcons = Overflow.getAvailableIcons("Center")
+		local centerPos = (isLeft and 1) or #centerOrderedIcons
+		local nearestCenterIcon = centerOrderedIcons[centerPos]
+		local function secondaryCheck()
+			if not beganSecondaryCenterCheck then
+				beganSecondaryCenterCheck = true
+				task.delay(3, Overflow.updateBoundary, alignment)
 			end
-		elseif isRight then
-			if centerBoundary > removeBoundary then
-				nearestCenterIcon:align("Right")
-				nearestCenterIcon.hasRelocatedInOverflow = true
+		end
+		if nearestCenterIcon and not nearestCenterIcon.hasRelocatedInOverflow then
+			local ourNearestIcon = (isLeft and ourOrderedIcons[#ourOrderedIcons]) or (isRight and ourOrderedIcons[1])
+			local centralNearestXPos = nearestCenterIcon.widget.AbsolutePosition.X
+			local ourNearestXPos = ourNearestIcon.widget.AbsolutePosition.X
+			local ourNearestXSize = Overflow.getWidth(ourNearestIcon)
+			local centerBoundary = (isLeft and centralNearestXPos-BOUNDARY_GAP) or centralNearestXPos + Overflow.getWidth(nearestCenterIcon) + BOUNDARY_GAP
+			local removeBoundary = (isLeft and ourNearestXPos + ourNearestXSize) or ourNearestXPos
+			local hasShifted = false
+			if isLeft then
+				if centerBoundary < removeBoundary then
+					if not beginCheckingCenterIcons then
+						secondaryCheck()
+						return
+					end
+					nearestCenterIcon:align("Left")
+					nearestCenterIcon.hasRelocatedInOverflow = true
+					hasShifted = true
+				end
+			elseif isRight then
+				if centerBoundary > removeBoundary then
+					if not beginCheckingCenterIcons or removeBoundary < 0 then
+						secondaryCheck()
+						return
+					end
+					nearestCenterIcon:align("Right")
+					nearestCenterIcon.hasRelocatedInOverflow = true
+					hasShifted = true
+				end
+			end
+			if hasShifted then
+				totalChecks += 1
+				if totalChecks <= 4 then
+					Overflow.updateAvailableIcons("Center")
+					checkToShiftCentralIcon()
+				end
 			end
 		end
 	end
+	checkToShiftCentralIcon()
 	
 	--[[
 	This updates the maximum size of the overflow menus

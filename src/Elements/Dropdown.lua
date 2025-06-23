@@ -1,6 +1,7 @@
+local PADDING = 0 -- used to be 8
 return function(icon)
 	
-	local dropdown = Instance.new("Frame")
+	local dropdown = Instance.new("Frame") -- Instance.new("CanvasGroup")
 	dropdown.Name = "Dropdown"
 	dropdown.AutomaticSize = Enum.AutomaticSize.XY
 	dropdown.BackgroundTransparency = 1
@@ -10,6 +11,20 @@ return function(icon)
 	dropdown.ZIndex = -2
 	dropdown.ClipsDescendants = true
 	dropdown.Parent = icon.widget
+
+	-- Account for PreferredTransparency which can be set by every player
+	local GuiService = game:GetService("GuiService")
+	icon:setBehaviour("Dropdown", "BackgroundTransparency", function(value)
+		local preference = GuiService.PreferredTransparency
+		local newValue = value * preference
+		if value == 1 then
+			return value
+		end
+		return newValue
+	end)
+	icon.janitor:add(GuiService:GetPropertyChangedSignal("PreferredTransparency"):Connect(function()
+		icon:refreshAppearance(dropdown, "BackgroundTransparency")
+	end))
 
 	local UICorner = Instance.new("UICorner")
 	UICorner.Name = "DropdownCorner"
@@ -26,7 +41,7 @@ return function(icon)
 	dropdownScroller.ZIndex = -1
 	dropdownScroller.ClipsDescendants = true
 	dropdownScroller.Visible = true
-	dropdownScroller.VerticalScrollBarInset = Enum.ScrollBarInset.ScrollBar
+	dropdownScroller.VerticalScrollBarInset = Enum.ScrollBarInset.None --ScrollBar
 	dropdownScroller.VerticalScrollBarPosition = Enum.VerticalScrollBarPosition.Right
 	dropdownScroller.Active = false
 	dropdownScroller.ScrollingEnabled = true
@@ -41,8 +56,8 @@ return function(icon)
 	
 	local dropdownPadding = Instance.new("UIPadding")
 	dropdownPadding.Name = "DropdownPadding"
-	dropdownPadding.PaddingTop = UDim.new(0, 8)
-	dropdownPadding.PaddingBottom = UDim.new(0, 8)
+	dropdownPadding.PaddingTop = UDim.new(0, PADDING)
+	dropdownPadding.PaddingBottom = UDim.new(0, PADDING)
 	dropdownPadding.Parent = dropdownScroller
 
 	local dropdownList = Instance.new("UIListLayout")
@@ -59,15 +74,16 @@ return function(icon)
 		-- Modify appearance of child when joined
 		local _, modificationUID = childIcon:modifyTheme({
 			{"Widget", "BorderSize", 0},
-			{"IconCorners", "CornerRadius", UDim.new(0, 4)},
+			{"IconCorners", "CornerRadius", UDim.new(0, 10)},
 			{"Widget", "MinimumWidth", 190},
-			{"Widget", "MinimumHeight", 56},
-			{"IconLabel", "TextSize", 19},
+			{"Widget", "MinimumHeight", 58},
+			{"IconLabel", "TextSize", 20},
+			{"IconOverlay", "Size", UDim2.new(1, 0, 1, 0)},
 			{"PaddingLeft", "Size", UDim2.fromOffset(25, 0)},
 			{"Notice", "Position", UDim2.new(1, -24, 0, 5)},
 			{"ContentsList", "HorizontalAlignment", Enum.HorizontalAlignment.Left},
-			{"Selection", "Size", UDim2.new(1, -8, 1, -8)},
-			{"Selection", "Position", UDim2.new(0, 4, 0, 4)},
+			{"Selection", "Size", UDim2.new(1, -PADDING, 1, -PADDING)},
+			{"Selection", "Position", UDim2.new(0, PADDING/2, 0, PADDING/2)},
 		})
 		task.defer(function()
 			childIcon.joinJanitor:add(function()
@@ -82,7 +98,6 @@ return function(icon)
 			otherIcon:destroy()
 		end
 		-- Add new icons
-		local totalNewIcons = #arrayOfIcons
 		if type(arrayOfIcons) == "table" then
 			for i, otherIcon in pairs(arrayOfIcons) do
 				otherIcon:joinDropdown(icon)
@@ -135,14 +150,22 @@ return function(icon)
 		end)
 		local totalHeight = 0
 		local hasSetNextSelection = false
-		for i = 1, maxIcons do
+		local maxIconsRoundedUp = math.ceil(maxIcons)
+		for i = 1, maxIconsRoundedUp do
 			local group = orderedInstances[i]
 			if not group then
 				break
 			end
 			local child = group[1]
 			local height = child.AbsoluteSize.Y
+			local isReduced = i == maxIconsRoundedUp and maxIconsRoundedUp ~= maxIcons
+			if isReduced then
+				height = height * (maxIcons - maxIconsRoundedUp + 1)
+			end
 			totalHeight += height
+			if isReduced then
+				continue
+			end
 			local iconUID = child:GetAttribute("WidgetUID")
 			local childIcon = iconUID and Icon.getIconByUID(iconUID)
 			if childIcon then

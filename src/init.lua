@@ -1,3 +1,4 @@
+--!nonstrict
 --[[
 	
 	The majority of this code is an interface designed to make it easy for you to
@@ -34,13 +35,15 @@
 
 
 -- SERVICES
-local LocalizationService = game:GetService("LocalizationService")
 local UserInputService = game:GetService("UserInputService")
-local RunService = game:GetService("RunService")
-local TextService = game:GetService("TextService")
 local StarterGui = game:GetService("StarterGui")
-local GuiService = game:GetService("GuiService")
 local Players = game:GetService("Players")
+local Types = require(script.Types)
+
+
+
+-- TYPES
+export type Icon = Types.Icon
 
 
 
@@ -52,7 +55,7 @@ local Reference = require(iconModule.Reference)
 local referenceObject = Reference.getObject()
 local leadPackage = referenceObject and referenceObject.Value
 if leadPackage and leadPackage ~= iconModule then
-	return require(leadPackage)
+	return require(leadPackage) :: Types.StaticIcon
 end
 if not referenceObject then
 	Reference.addToReplicatedStorage()
@@ -64,7 +67,6 @@ end
 local Signal = require(iconModule.Packages.GoodSignal)
 local Janitor = require(iconModule.Packages.Janitor)
 local Utility = require(iconModule.Utility)
-local Attribute = require(iconModule.Attribute)
 local Themes = require(iconModule.Features.Themes)
 local Gamepad = require(iconModule.Features.Gamepad)
 local Overflow = require(iconModule.Features.Overflow)
@@ -76,7 +78,6 @@ Icon.__index = Icon
 --- LOCAL
 local localPlayer = Players.LocalPlayer
 local themes = iconModule.Features.Themes
-local playerGui = localPlayer:WaitForChild("PlayerGui")
 local iconsDict = {}
 local anyIconSelected = Signal.new()
 local elements = iconModule.Elements
@@ -84,22 +85,13 @@ local totalCreatedIcons = 0
 
 
 
--- PRESETUP
--- This is only used to determine if we need to apply the old topbar theme
--- I'll be removing this and associated functions once all games have
--- fully transitioned over to the new topbar
-if GuiService.TopbarInset.Height == 0 then
-	GuiService:GetPropertyChangedSignal("TopbarInset"):Wait()
-end
-
-
-
 -- PUBLIC VARIABLES
 Icon.baseDisplayOrderChanged = Signal.new()
 Icon.baseDisplayOrder = 10
 Icon.baseTheme = require(themes.Default)
-Icon.isOldTopbar = GuiService.TopbarInset.Height == 36
+Icon.isOldTopbar = false -- Logic has been moved to Container
 Icon.iconsDictionary = iconsDict
+Icon.insetHeightChanged = Signal.new()
 Icon.container = require(elements.Container)(Icon)
 Icon.topbarEnabled = true
 Icon.iconAdded = Signal.new()
@@ -118,6 +110,7 @@ function Icon.getIconByUID(UID)
 	if match then
 		return match
 	end
+	return nil
 end
 
 function Icon.getIcon(nameOrUID)
@@ -130,6 +123,7 @@ function Icon.getIcon(nameOrUID)
 			return icon
 		end
 	end
+	return nil
 end
 
 function Icon.setTopbarEnabled(bool, isInternal)
@@ -166,12 +160,13 @@ end
 -- SETUP
 task.defer(Gamepad.start, Icon)
 task.defer(Overflow.start, Icon)
-for _, screenGui in pairs(Icon.container) do
-	screenGui.Parent = playerGui
-end
-if Icon.isOldTopbar then
-	Icon.modifyBaseTheme(require(themes.Classic))
-end
+task.defer(function()
+	local playerGui = localPlayer:WaitForChild("PlayerGui")
+	for _, screenGui in pairs(Icon.container) do
+		screenGui.Parent = playerGui
+	end
+	require(iconModule.Attribute)
+end)
 
 
 
@@ -227,6 +222,7 @@ function Icon.new()
 	self.iconModule = iconModule
 	self.UID = iconUID
 	self.isEnabled = true
+	self.enabled = self.isEnabled -- Backwards compatability
 	self.isSelected = false
 	self.isViewing = false
 	self.joinedFrame = false
@@ -249,7 +245,6 @@ function Icon.new()
 	self.menuIcons = {}
 	self.dropdownIcons = {}
 	self.childIconsDict = {}
-	self.isOldTopbar = Icon.isOldTopbar
 	self.creationTime = os.clock()
 
 	-- Widget is the new name for an icon
@@ -260,8 +255,9 @@ function Icon.new()
 	-- It's important we set an order otherwise icons will not align
 	-- correctly within menus
 	totalCreatedIcons += 1
-	local ourOrder = totalCreatedIcons
-	self:setOrder(ourOrder)
+	local ourOrder = 1+(totalCreatedIcons*0.01)
+	self:setOrder(ourOrder, "deselected")
+	self:setOrder(ourOrder, "selected")
 
 	-- This applies the default them
 	self:setTheme(Icon.baseTheme)
@@ -404,7 +400,6 @@ function Icon.new()
 	end
 
 	-- Additional children behaviour when toggled (mostly notices)
-	local noticeLabel = self:getInstance("NoticeLabel")
 	self.toggled:Connect(function(isSelected)
 		self.noticeChanged:Fire(self.totalNotices)
 		for childIconUID, _ in pairs(self.childIconsDict) do
@@ -455,7 +450,6 @@ function Icon.new()
 	-- There's a rare occassion where the appearance is not
 	-- fully set to deselected so this ensures the icons
 	-- appearance is fully as it should be
-	--print("self.activeState =", self.activeState)
 	task.delay(0.1, function()
 		if self.activeState == "Deselected" then
 			self.stateChanged:Fire("Deselected")
@@ -552,7 +546,6 @@ function Icon:getInstance(name)
 			end
 			-- If the child is a fake placeholder instance (such as dropdowns, notices, etc)
 			-- then its important we scan the real original instance instead of this clone
-			local previousChild = child
 			local realChild = Themes.getRealInstance(child)
 			if realChild then
 				child = realChild
@@ -648,8 +641,8 @@ function Icon:setBehaviour(collectiveOrInstanceName, property, callback, refresh
 	end
 end
 
-function Icon:modifyTheme(modifications, modificationUID)
-	local modificationUID = Themes.modify(self, modifications, modificationUID)
+function Icon:modifyTheme(modifications, customModificationUID)
+	local modificationUID = Themes.modify(self, modifications, customModificationUID)
 	return self, modificationUID
 end
 
@@ -683,6 +676,7 @@ end
 
 function Icon:setEnabled(bool)
 	self.isEnabled = bool
+	self.enabled = self.isEnabled
 	self.widget.Visible = bool
 	self:updateParent()
 	return self
@@ -734,7 +728,11 @@ function Icon:setLabel(text, iconState)
 end
 
 function Icon:setOrder(int, iconState)
-	self:modifyTheme({"Widget", "LayoutOrder", int, iconState})
+	-- We multiply by 100 to allow for custom increments inbetween
+	-- (.01, .02, etc) as LayoutOrders only support integers
+	local newInt = int*100
+	self:modifyTheme({"IconSpot", "LayoutOrder", newInt, iconState})
+	self:modifyTheme({"Widget", "LayoutOrder", newInt, iconState})
 	return self
 end
 
@@ -791,8 +789,6 @@ function Icon:setWidth(offsetMinimum, iconState)
 	-- This sets a minimum X offset size for the widget, useful
 	-- for example if you're constantly changing the label
 	-- but don't want the icon to resize every time
-	local newSize = UDim2.fromOffset(offsetMinimum, self.widget.Size.Y.Offset)
-	self:modifyTheme({"Widget", "Size", newSize, iconState})
 	self:modifyTheme({"Widget", "DesiredWidth", offsetMinimum, iconState})
 	return self
 end
@@ -915,8 +911,8 @@ function Icon:call(callback, ...)
 	return self
 end
 
-function Icon:addToJanitor(callback)
-	self.janitor:add(callback)
+function Icon:addToJanitor(callback, methodName, index)
+	self.janitor:add(callback, methodName, index)
 	return self
 end
 
@@ -1070,6 +1066,125 @@ function Icon:setIndicator(keyCode)
 	self.indicatorSet:Fire(keyCode)
 end
 
+function Icon:convertLabelToNumberSpinner(numberSpinner)
+	local label = self:getInstance("IconLabel")
+	label.Transparency = 1
+	numberSpinner.Parent = label.Parent
+	numberSpinner.Size = UDim2.fromScale(1, 1)
+	numberSpinner.AnchorPoint = Vector2.new(0.5, 0.5)
+	numberSpinner.Position = UDim2.new(0.5, 0, 0.5, 0)
+	numberSpinner.TextXAlignment = Enum.TextXAlignment.Center
+	numberSpinner.ClipsDescendants = false
+
+	local propertiesToChangeLabel = {
+		"FontFace",
+		"BorderSizePixel",
+		"BorderColor3",
+		"Rotation",
+		"TextStrokeTransparency",
+		"TextStrokeColor3",
+		"TextStrokeTransparency",
+		"TextColor3",
+	}
+	for _, property in ipairs(propertiesToChangeLabel) do
+		numberSpinner[property] = label[property]
+		self:addToJanitor(label:GetPropertyChangedSignal(property):Connect(function()
+			numberSpinner[property] = label[property]
+		end))
+	end
+
+	local minDigits = 0
+	local maxDigits = 8
+	local function getSpinnerSizeAndDigitCount()
+		local TotalSize = 0
+		local numOfDigits = 0
+		for i, child in numberSpinner.Frame:GetChildren() do
+			local name = string.lower(child.Name)
+			if name == "digit" then
+				TotalSize += child.AbsoluteSize.X
+				numOfDigits += 1
+			elseif name == "prefix" or name == "suffix" or name == "comma" then
+				if child.Text ~= "" then
+					TotalSize += child.AbsoluteSize.X
+					numOfDigits += 1
+				end
+			end
+		end
+		return TotalSize, numOfDigits
+	end
+
+	local function getLabelParentContainerXSize()
+		local nextParent = label.Parent.Parent
+		if nextParent == nil then
+			return 0
+		end
+		if nextParent.IconImage.Visible == true then
+			return numberSpinner.Frame.AbsoluteSize.X + label.Parent.Parent.IconImage.AbsoluteSize.X
+		else
+			return nextParent.AbsoluteSize.X
+		end
+	end
+	local function getNumberSpinnerXSize()
+		return numberSpinner.Frame.AbsoluteSize.X
+	end
+
+	local function adjustSize()
+		local totalDigitXSize, numOfDigits = getSpinnerSizeAndDigitCount()
+		if numOfDigits < 18 then
+			self:setLabel(numberSpinner.Value)
+		end
+
+		local NumberSpinnerXSize = getNumberSpinnerXSize()
+
+		while totalDigitXSize < NumberSpinnerXSize and self.isDestroyed ~= true do
+			task.wait(0.05)
+			if numOfDigits > minDigits and numOfDigits < maxDigits then
+				numberSpinner.TextSize = label.TextSize
+				break
+			else
+				numberSpinner.TextSize += 1
+			end
+
+			NumberSpinnerXSize = getNumberSpinnerXSize()
+			totalDigitXSize, numOfDigits = getSpinnerSizeAndDigitCount()
+		end
+
+		local labelParentContainerXSize = getLabelParentContainerXSize()
+		while totalDigitXSize > labelParentContainerXSize and self.isDestroyed ~= true do
+			task.wait(0.05)
+			if numOfDigits < maxDigits and numOfDigits > minDigits then
+				numberSpinner.TextSize = label.TextSize
+				break
+			else
+				numberSpinner.TextSize -= 1
+			end
+
+			labelParentContainerXSize = getLabelParentContainerXSize()
+			totalDigitXSize, numOfDigits = getSpinnerSizeAndDigitCount()
+		end
+	end
+
+	self:addToJanitor(numberSpinner.Frame.ChildAdded:Connect(adjustSize))
+	self:addToJanitor(numberSpinner.Frame.ChildRemoved:Connect(adjustSize))
+	self:addToJanitor(self.iconAdded:Connect(function()
+		task.wait(1)
+		adjustSize()
+	end))
+
+	self:updateParent()
+
+	-- This corrects text to the size of a normal label
+	numberSpinner.Name = "LabelSpinner"
+	numberSpinner.Prefix = "$"
+	numberSpinner.Commas = true
+	numberSpinner.Decimals = 0
+	numberSpinner.Duration = 0.25
+	numberSpinner.Value = 10
+	task.wait(0.2)
+
+	return self
+end
+
 
 
 -- DESTROY/CLEANUP
@@ -1087,14 +1202,4 @@ function Icon:destroy()
 end
 Icon.Destroy = Icon.destroy
 
-
-
-return setmetatable({}, {
-	__index = function(self, index)
-		if index == "Icon" then
-			return Icon
-		end
-
-		return Icon[index]
-	end,
-})
+return Icon :: Types.StaticIcon
