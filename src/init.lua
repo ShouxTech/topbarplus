@@ -1202,4 +1202,14 @@ function Icon:destroy()
 end
 Icon.Destroy = Icon.destroy
 
-return Icon :: Types.StaticIcon
+-- return Icon :: Types.StaticIcon
+-- return { Icon = Icon :: Types.StaticIcon }
+return setmetatable({}, {
+	__index = function(self, index)
+		if index == 'Icon' then
+			return Icon :: Types.StaticIcon;
+		end;
+
+		return (Icon :: Types.StaticIcon)[index];
+	end,
+});
