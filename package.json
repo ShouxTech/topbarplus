@@ -1,6 +1,6 @@
 {
   "name": "@rbxts/topbarplus",
-  "version": "1.0.6",
+  "version": "1.0.7",
   "description": "Roblox-TS typings for the TopbarPlus module.",
   "main": "out/init.lua",
   "scripts": {

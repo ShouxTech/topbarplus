@@ -1,8 +1,9 @@
-export type IconState = 'Deselected' | 'Selected' | 'Viewing';
-export type IconAlignment = 'Left' | 'Center' | 'Right';
+export type IconState = "Deselected" | "Selected" | "Viewing";
+export type IconAlignment = "Left" | "Center" | "Right";
+export type FromSource = "User" | "OneClick" | "AutoDeselect" | "HideParentFeature" | "Overflow";
 
 type FontFamilyLink<T extends string> = `rbxasset://fonts/families/${T}.json`;
-type AllFontNames = keyof Omit<typeof Enum.Font, 'GetEnumItems'>;
+type AllFontNames = keyof Omit<typeof Enum.Font, "GetEnumItems">;
 type IconEventName = keyof IconEvents;
 
 type InferSignalCallback<T> = T extends RBXScriptSignal<infer A> ? A : never;
@@ -11,14 +12,12 @@ type InferEventCallback<T extends IconEventName> = (
 	...rest: Parameters<InferSignalCallback<IconEvents[T]>>
 ) => void;
 
-type FromSource = 'User' | 'OneClick' | 'AutoDeselect' | 'HideParentFeature' | 'Overflow' | undefined;
-
-export type IconUID = string;
+type IconUID = string;
 
 interface IconEvents {
-	selected: RBXScriptSignal<(fromSource: FromSource) => void>;
-	deselected: RBXScriptSignal<(fromSource: FromSource) => void>;
-	toggled: RBXScriptSignal<(isSelected: boolean, fromSource: FromSource) => void>;
+	selected: RBXScriptSignal<(fromSource?: FromSource, sourceIcon?: Icon) => void>;
+	deselected: RBXScriptSignal<(fromSource?: FromSource, sourceIcon?: Icon) => void>;
+	toggled: RBXScriptSignal<(isSelected: boolean, fromSource?: FromSource, sourceIcon?: Icon) => void>;
 	viewingStarted: RBXScriptSignal<() => void>;
 	viewingEnded: RBXScriptSignal<() => void>;
 	notified: RBXScriptSignal<() => void>;
@@ -36,7 +35,7 @@ interface WidgetInstances {
 	IconImageCorner: UICorner;
 	IconSpot: Frame;
 	IconSpotGradient: UIGradient;
-	IconOverlay: WidgetInstances['IconSpot'];
+	IconOverlay: WidgetInstances["IconSpot"];
 	IconGradient: UIGradient;
 	ClickRegion: TextButton;
 	Menu: ScrollingFrame;
@@ -111,12 +110,12 @@ interface Icon extends IconEvents {
 	 * Selects the icon (as if it were clicked once).
 	 * @chainable
 	 */
-	select(): this;
+	select(fromSource?: FromSource, sourceIcon?: Icon): this;
 	/**
 	 * Deselects the icon (as if it were clicked, then clicked again).
 	 * @chainable
 	 */
-	deselect(): this;
+	deselect(fromSource?: FromSource, sourceIcon?: Icon): this;
 	/**
 	 * Prompts a notice bubble which accumulates the further it is prompted.
 	 * If the icon belongs to a dropdown or menu, then the notice will appear on the parent icon when the parent icon is deselected.
@@ -144,7 +143,7 @@ interface Icon extends IconEvents {
 	/** @chainable @toggleable */
 	setCornerRadius(scale: number, offset: number, iconState?: IconState): this;
 	/**
-	 * This enables you to set the icon to the 'Left' (default), 'Center' or 'Right' side of the screen.
+	 * This enables you to set the icon to the "Left" (default), "Center" or "Right" side of the screen.
 	 * See [alignments](https://1foreverhd.github.io/TopbarPlus/features/#alignments) for more details.
 	 * @chainable
 	 */
@@ -172,10 +171,10 @@ interface Icon extends IconEvents {
 	setTextSize(size: number, iconState?: IconState): this;
 	/**
 	 * Sets the labels FontFace.
-	 * Font can be a font family name (such as 'Creepster'),
+	 * Font can be a font family name (such as "Creepster"),
 	 * a font enum (such as Enum.Font.Bangers),
 	 * a font ID (such as 12187370928)
-	 * or font family link (such as 'rbxasset://fonts/families/Sarpanch.json').
+	 * or font family link (such as "rbxasset://fonts/families/Sarpanch.json").
 	 * @chainable @toggleable
 	 */
 	setTextFont(

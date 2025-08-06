@@ -36,6 +36,7 @@
 
 -- SERVICES
 local UserInputService = game:GetService("UserInputService")
+local ContentProvider = game:GetService("ContentProvider")
 local StarterGui = game:GetService("StarterGui")
 local Players = game:GetService("Players")
 local Types = require(script.Types)
@@ -394,6 +395,7 @@ function Icon.new()
 		end
 	end
 	if origin and originsScreenGui and originsScreenGui.ResetOnSpawn == true then
+		self.originsScreenGui = originsScreenGui
 		Utility.localPlayerRespawned(function()
 			self:destroy()
 		end)
@@ -719,6 +721,17 @@ Icon.disableStateOverlay = Icon.disableOverlay
 
 function Icon:setImage(imageId, iconState)
 	self:modifyTheme({"IconImage", "Image", imageId, iconState})
+	
+	-- This code ensures icon images are preloaded if they haven't been fetched yet
+	task.spawn(function()
+		local newIdContent = if tonumber(imageId) then `rbxassetid://{imageId}` else imageId
+		local initialAssetFetchStatus = ContentProvider:GetAssetFetchStatus(newIdContent)
+	
+		if initialAssetFetchStatus ~= Enum.AssetFetchStatus.Success then
+			pcall(ContentProvider.PreloadAsync, ContentProvider, { newIdContent })
+		end
+	end)
+		
 	return self
 end
 
@@ -1066,122 +1079,130 @@ function Icon:setIndicator(keyCode)
 	self.indicatorSet:Fire(keyCode)
 end
 
-function Icon:convertLabelToNumberSpinner(numberSpinner)
-	local label = self:getInstance("IconLabel")
-	label.Transparency = 1
-	numberSpinner.Parent = label.Parent
-	numberSpinner.Size = UDim2.fromScale(1, 1)
-	numberSpinner.AnchorPoint = Vector2.new(0.5, 0.5)
-	numberSpinner.Position = UDim2.new(0.5, 0, 0.5, 0)
-	numberSpinner.TextXAlignment = Enum.TextXAlignment.Center
-	numberSpinner.ClipsDescendants = false
+function Icon:convertLabelToNumberSpinner(numberSpinner, callback)
+	task.defer(function()
+		
+		local label = self:getInstance("IconLabel")
+		label.Transparency = 1
+		numberSpinner.Parent = label.Parent
+		numberSpinner.Size = UDim2.fromScale(1, 1)
+		numberSpinner.AnchorPoint = Vector2.new(0.5, 0.5)
+		numberSpinner.Position = UDim2.new(0.5, 0, 0.5, 0)
+		numberSpinner.TextXAlignment = Enum.TextXAlignment.Center
+		numberSpinner.ClipsDescendants = false
 
-	local propertiesToChangeLabel = {
-		"FontFace",
-		"BorderSizePixel",
-		"BorderColor3",
-		"Rotation",
-		"TextStrokeTransparency",
-		"TextStrokeColor3",
-		"TextStrokeTransparency",
-		"TextColor3",
-	}
-	for _, property in ipairs(propertiesToChangeLabel) do
-		numberSpinner[property] = label[property]
-		self:addToJanitor(label:GetPropertyChangedSignal(property):Connect(function()
+		local propertiesToChangeLabel = {
+			"FontFace",
+			"BorderSizePixel",
+			"BorderColor3",
+			"Rotation",
+			"TextStrokeTransparency",
+			"TextStrokeColor3",
+			"TextStrokeTransparency",
+			"TextColor3",
+		}
+		for _, property in ipairs(propertiesToChangeLabel) do
 			numberSpinner[property] = label[property]
-		end))
-	end
+			self:addToJanitor(label:GetPropertyChangedSignal(property):Connect(function()
+				numberSpinner[property] = label[property]
+			end))
+		end
 
-	local minDigits = 0
-	local maxDigits = 8
-	local function getSpinnerSizeAndDigitCount()
-		local TotalSize = 0
-		local numOfDigits = 0
-		for i, child in numberSpinner.Frame:GetChildren() do
-			local name = string.lower(child.Name)
-			if name == "digit" then
-				TotalSize += child.AbsoluteSize.X
-				numOfDigits += 1
-			elseif name == "prefix" or name == "suffix" or name == "comma" then
-				if child.Text ~= "" then
+		local minDigits = 0
+		local maxDigits = 8
+		local function getSpinnerSizeAndDigitCount()
+			local TotalSize = 0
+			local numOfDigits = 0
+			for i, child in numberSpinner.Frame:GetChildren() do
+				local name = string.lower(child.Name)
+				if name == "digit" then
 					TotalSize += child.AbsoluteSize.X
 					numOfDigits += 1
+				elseif name == "prefix" or name == "suffix" or name == "comma" then
+					if child.Text ~= "" then
+						TotalSize += child.AbsoluteSize.X
+						numOfDigits += 1
+					end
 				end
 			end
+			return TotalSize, numOfDigits
 		end
-		return TotalSize, numOfDigits
-	end
-
-	local function getLabelParentContainerXSize()
-		local nextParent = label.Parent.Parent
-		if nextParent == nil then
-			return 0
-		end
-		if nextParent.IconImage.Visible == true then
-			return numberSpinner.Frame.AbsoluteSize.X + label.Parent.Parent.IconImage.AbsoluteSize.X
-		else
-			return nextParent.AbsoluteSize.X
-		end
-	end
-	local function getNumberSpinnerXSize()
-		return numberSpinner.Frame.AbsoluteSize.X
-	end
-
-	local function adjustSize()
-		local totalDigitXSize, numOfDigits = getSpinnerSizeAndDigitCount()
-		if numOfDigits < 18 then
-			self:setLabel(numberSpinner.Value)
-		end
-
-		local NumberSpinnerXSize = getNumberSpinnerXSize()
-
-		while totalDigitXSize < NumberSpinnerXSize and self.isDestroyed ~= true do
-			task.wait(0.05)
-			if numOfDigits > minDigits and numOfDigits < maxDigits then
-				numberSpinner.TextSize = label.TextSize
-				break
+		
+		local function getLabelParentContainerXSize()
+			local firstParent = label.Parent
+			local nextParent = firstParent and firstParent.Parent
+			if nextParent == nil then
+				return 0
+			end
+			if nextParent.IconImage.Visible == true then
+				return numberSpinner.Frame.AbsoluteSize.X + label.Parent.Parent.IconImage.AbsoluteSize.X
 			else
-				numberSpinner.TextSize += 1
+				return nextParent.AbsoluteSize.X
+			end
+		end
+		local function getNumberSpinnerXSize()
+			return numberSpinner.Frame.AbsoluteSize.X
+		end
+
+		local function adjustSize()
+			local totalDigitXSize, numOfDigits = getSpinnerSizeAndDigitCount()
+			if numOfDigits < 18 then
+				self:setLabel(numberSpinner.Value)
 			end
 
-			NumberSpinnerXSize = getNumberSpinnerXSize()
-			totalDigitXSize, numOfDigits = getSpinnerSizeAndDigitCount()
-		end
+			local NumberSpinnerXSize = getNumberSpinnerXSize()
 
-		local labelParentContainerXSize = getLabelParentContainerXSize()
-		while totalDigitXSize > labelParentContainerXSize and self.isDestroyed ~= true do
-			task.wait(0.05)
-			if numOfDigits < maxDigits and numOfDigits > minDigits then
-				numberSpinner.TextSize = label.TextSize
-				break
-			else
-				numberSpinner.TextSize -= 1
+			while totalDigitXSize < NumberSpinnerXSize and self.isDestroyed ~= true do
+				task.wait(0.05)
+				if numOfDigits > minDigits and numOfDigits < maxDigits then
+					numberSpinner.TextSize = label.TextSize
+					break
+				else
+					numberSpinner.TextSize += 1
+				end
+
+				NumberSpinnerXSize = getNumberSpinnerXSize()
+				totalDigitXSize, numOfDigits = getSpinnerSizeAndDigitCount()
 			end
 
-			labelParentContainerXSize = getLabelParentContainerXSize()
-			totalDigitXSize, numOfDigits = getSpinnerSizeAndDigitCount()
+			local labelParentContainerXSize = getLabelParentContainerXSize()
+			while totalDigitXSize > labelParentContainerXSize and self.isDestroyed ~= true do
+				task.wait(0.05)
+				if numOfDigits < maxDigits and numOfDigits > minDigits then
+					numberSpinner.TextSize = label.TextSize
+					break
+				else
+					numberSpinner.TextSize -= 1
+				end
+
+				labelParentContainerXSize = getLabelParentContainerXSize()
+				totalDigitXSize, numOfDigits = getSpinnerSizeAndDigitCount()
+			end
 		end
-	end
 
-	self:addToJanitor(numberSpinner.Frame.ChildAdded:Connect(adjustSize))
-	self:addToJanitor(numberSpinner.Frame.ChildRemoved:Connect(adjustSize))
-	self:addToJanitor(self.iconAdded:Connect(function()
-		task.wait(1)
-		adjustSize()
-	end))
+		self:addToJanitor(numberSpinner.Frame.ChildAdded:Connect(adjustSize))
+		self:addToJanitor(numberSpinner.Frame.ChildRemoved:Connect(adjustSize))
+		self:addToJanitor(self.iconAdded:Connect(function()
+			task.wait(1)
+			adjustSize()
+		end))
 
-	self:updateParent()
+		self:updateParent()
 
-	-- This corrects text to the size of a normal label
-	numberSpinner.Name = "LabelSpinner"
-	numberSpinner.Prefix = "$"
-	numberSpinner.Commas = true
-	numberSpinner.Decimals = 0
-	numberSpinner.Duration = 0.25
-	numberSpinner.Value = 10
-	task.wait(0.2)
-
+		-- This corrects text to the size of a normal label
+		numberSpinner.Name = "LabelSpinner"
+		numberSpinner.Prefix = "$"
+		numberSpinner.Commas = true
+		numberSpinner.Decimals = 0
+		numberSpinner.Duration = 0.25
+		numberSpinner.Value = 10
+		task.wait(0.2)
+		
+		if typeof(callback) == "function" then
+			callback()
+		end
+		
+	end)
 	return self
 end
 
@@ -1203,7 +1224,6 @@ end
 Icon.Destroy = Icon.destroy
 
 -- return Icon :: Types.StaticIcon
--- return { Icon = Icon :: Types.StaticIcon }
 return setmetatable({}, {
 	__index = function(self, index)
 		if index == 'Icon' then
