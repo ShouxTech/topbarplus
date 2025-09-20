@@ -225,6 +225,14 @@ type Methods = {
 			return nil :: any
 		end
 	),
+	setTextColor: typeof(
+		--[[
+			The color of the icon labels' text
+		]]
+		function(self: Icon, color: Color3, iconState: IconState?): Icon
+			return nil :: any
+		end
+	),
 	setTextFont: typeof(
 		--[[
 			Sets the labels FontFace.
@@ -386,6 +394,15 @@ type Methods = {
 	setMenu: typeof(
 		--[[
 			Creates a horizontal menu based upon the given array of icons.
+			Pass an empty table <code>{}</code> to remove the menu.
+		]]
+		function(self: Icon, icons: { Icon }): Icon
+			return nil :: any
+		end
+	),
+	setFixedMenu: typeof(
+		--[[
+			Creates a menu that is always selected and has it's close button hidden.
 			Pass an empty table <code>{}</code> to remove the menu.
 		]]
 		function(self: Icon, icons: { Icon }): Icon

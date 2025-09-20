@@ -6,6 +6,7 @@ return function(Icon)
 	-- https://devforum.roblox.com/t/bug/2973508/7
 	local GuiService = game:GetService("GuiService")
 	local Players =  game:GetService("Players")
+	local UserInputService = game:GetService("UserInputService")
 	local container = {}
 	local Signal = require(script.Parent.Parent.Packages.GoodSignal)
 	local insetChanged = Signal.new()
@@ -14,14 +15,18 @@ return function(Icon)
 	local yDownOffset = 0
 	local ySizeOffset = 0
 	local checkCount = 0
+	local isConsoleScreen = false
+	local isUsingVR = false
 	local function checkInset(status)
 		local currentHeight = GuiService.TopbarInset.Height
 		local isOldTopbar = currentHeight <= 36
-		local isConsoleScreen = GuiService:IsTenFootInterface()
+		
 
 		-- These additional checks are needed to ensure *it is actually* the old topbar
 		-- and not a client which takes a really long time to load
 		-- There's unfortunately no APIs to do this a prettier way
+		isConsoleScreen = GuiService:IsTenFootInterface()
+		isUsingVR = UserInputService.VREnabled
 		Icon.isOldTopbar = isOldTopbar
 		checkCount += 1
 		if currentHeight == 0 and status == nil then
@@ -40,7 +45,7 @@ return function(Icon)
 		end
 
 		-- Conver to old theme if verified
-		if Icon.isOldTopbar and not isConsoleScreen and hasBecomeOldTheme == false and (currentHeight ~= 0 or status == "ForceConvertToOld") then
+		if Icon.isOldTopbar and not isConsoleScreen and not isUsingVR and hasBecomeOldTheme == false and (currentHeight ~= 0 or status == "ForceConvertToOld") then
 			hasBecomeOldTheme = true
 			task.defer(function()
 				-- If oldtopbar, apply the Classic theme
@@ -68,7 +73,7 @@ return function(Icon)
 		ySizeOffset = -2
 		if isConsoleScreen then
 			startInset = 10
-			yDownOffset = -9
+			yDownOffset = 0 ---9
 		end
 		if GuiService.TopbarInset.Height == 0 and not hasBecomeOldTheme then
 			yDownOffset += 13
@@ -95,6 +100,7 @@ return function(Icon)
 	end)
 	screenGui.Name = "TopbarStandard"
 	screenGui.Enabled = true
+	screenGui.DisplayOrder = Icon.baseDisplayOrder
 	screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 	screenGui.IgnoreGuiInset = true
 	screenGui.ResetOnSpawn = false
@@ -108,8 +114,10 @@ return function(Icon)
 	holders.Name = "Holders"
 	holders.BackgroundTransparency = 1
 	insetChanged:Connect(function()
+		local holderY = if isUsingVR then 36 else 56
+		local holderSize = if isConsoleScreen then UDim2.new(1, 0, 0, holderY) else UDim2.new(1, 0, 1, ySizeOffset)
 		holders.Position = UDim2.new(0, 0, 0, yDownOffset)
-		holders.Size = UDim2.new(1, 0, 1, ySizeOffset)
+		holders.Size = holderSize
 	end)
 	holders.Visible = true
 	holders.ZIndex = 1
@@ -121,6 +129,7 @@ return function(Icon)
 		holdersCenter.Size = UDim2.new(1, 0, 0, GuiService.TopbarInset.Height+ySizeOffset)
 	end
 	screenGuiCenter.Name = "TopbarCentered"
+	screenGuiCenter.DisplayOrder = Icon.baseDisplayOrder
 	screenGuiCenter.ScreenInsets = Enum.ScreenInsets.None
 	Icon.baseDisplayOrderChanged:Connect(function()
 		screenGuiCenter.DisplayOrder = Icon.baseDisplayOrder
@@ -132,17 +141,17 @@ return function(Icon)
 	
 	local screenGuiClipped = screenGui:Clone()
 	screenGuiClipped.Name = screenGuiClipped.Name.."Clipped"
-	screenGuiClipped.DisplayOrder += 1
+	screenGuiClipped.DisplayOrder = (Icon.baseDisplayOrder + 1)
 	Icon.baseDisplayOrderChanged:Connect(function()
-		screenGuiClipped.DisplayOrder = Icon.baseDisplayOrder + 1
+		screenGuiClipped.DisplayOrder = (Icon.baseDisplayOrder + 1)
 	end)
 	container[screenGuiClipped.Name] = screenGuiClipped
 	
 	local screenGuiCenterClipped = screenGuiCenter:Clone()
 	screenGuiCenterClipped.Name = screenGuiCenterClipped.Name.."Clipped"
-	screenGuiCenterClipped.DisplayOrder += 1
+	screenGuiCenterClipped.DisplayOrder = (Icon.baseDisplayOrder + 1)
 	Icon.baseDisplayOrderChanged:Connect(function()
-		screenGuiCenterClipped.DisplayOrder = Icon.baseDisplayOrder + 1
+		screenGuiCenterClipped.DisplayOrder = (Icon.baseDisplayOrder + 1)
 	end)
 	container[screenGuiCenterClipped.Name] = screenGuiCenterClipped
 	

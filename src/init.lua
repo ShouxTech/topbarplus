@@ -83,6 +83,11 @@ local iconsDict = {}
 local anyIconSelected = Signal.new()
 local elements = iconModule.Elements
 local totalCreatedIcons = 0
+local preferredInput = {
+	mobile = Enum.PreferredInput.Touch,
+	desktop = Enum.PreferredInput.KeyboardAndMouse,
+	console = Enum.PreferredInput.Gamepad
+}
 
 
 
@@ -265,39 +270,44 @@ function Icon.new()
 
 	-- Button Clicked (for states "Selected" and "Deselected")
 	local clickRegion = self:getInstance("ClickRegion")
+	local hasUsedMouseButton1Click = false
+	local lastToggleTime = 0
+	local DEBOUNCE_TIME = 0.1 -- 100ms debounce to prevent rapid toggles
+
 	local function handleToggle()
 		if self.locked then
 			return
 		end
+
+		-- Debounce logic to prevent rapid toggling
+		local currentTime = tick()
+		if currentTime - lastToggleTime < DEBOUNCE_TIME then
+			return
+		end
+		lastToggleTime = currentTime
+
 		if self.isSelected then
 			self:deselect("User", self)
 		else
 			self:select("User", self)
 		end
 	end
-	local isTouchTapping = false
-	local isClicking = false
+
 	clickRegion.MouseButton1Click:Connect(function()
-		if isTouchTapping then
-			return
-		end
-		isClicking = true
-		task.delay(0.01, function()
-			isClicking = false
-		end)
+		hasUsedMouseButton1Click = true
 		handleToggle()
 	end)
+
 	clickRegion.TouchTap:Connect(function()
 		-- This resolves the bug report by @28Pixels:
 		-- https://devforum.roblox.com/t/topbarplus/1017485/1104
-		if isClicking then
-			return
+		-- Only use TouchTap if MouseButton1Click has never fired
+		-- This handles edge cases where ONLY TouchTap works
+		-- Also prevents double-toggle bug with multi-touch on mobile
+		-- Credit to @sayer80 for this fix
+		if not hasUsedMouseButton1Click then
+			handleToggle()
 		end
-		isTouchTapping = true
-		task.delay(0.01, function()
-			isTouchTapping = false
-		end)
-		handleToggle()
 	end)
 
 	-- Keys can be bound to toggle between Selected and Deselected
@@ -337,7 +347,7 @@ function Icon.new()
 		end
 	end)
 	clickRegion.MouseEnter:Connect(function()
-		local dontSetState = not UserInputService.KeyboardEnabled
+		local dontSetState = UserInputService.PreferredInput ~= preferredInput.desktop
 		viewingStarted(dontSetState)
 	end)
 	local touchCount = 0
@@ -346,7 +356,7 @@ function Icon.new()
 	clickRegion.SelectionGained:Connect(viewingStarted)
 	clickRegion.SelectionLost:Connect(viewingEnded)
 	clickRegion.MouseButton1Down:Connect(function()
-		if not self.locked and UserInputService.TouchEnabled then
+		if not self.locked and UserInputService.PreferredInput == preferredInput.mobile then
 			touchCount += 1
 			local myTouchCount = touchCount
 			task.delay(0.2, function()
@@ -842,6 +852,18 @@ function Icon:setTextFont(font, fontWeight, fontStyle, iconState)
 	return self
 end
 
+function Icon:setTextColor(Color, iconState)
+	if Color == nil or Color == "" or (type(Color) ~= "userdata" or typeof(Color) ~= "Color3") then
+		if Color ~= nil and Color ~= "" then
+			warn("setTextColor item must be a Color3 value! Changed the color to white.")
+		end
+		Color = Color3.fromRGB(255, 255, 255)
+	end
+
+	self:modifyTheme({"IconLabel", "TextColor3", Color, iconState})
+	return self
+end
+
 function Icon:bindToggleItem(guiObjectOrLayerCollector)
 	if not guiObjectOrLayerCollector:IsA("GuiObject") and not guiObjectOrLayerCollector:IsA("LayerCollector") then
 		error("Toggle item must be a GuiObject or LayerCollector!")
@@ -1018,10 +1040,11 @@ function Icon:setMenu(arrayOfIcons)
 	return self
 end
 
-function Icon:setFrozenMenu(arrayOfIcons)
+function Icon:setFixedMenu(arrayOfIcons)
 	self:freezeMenu(arrayOfIcons)
 	self:setMenu(arrayOfIcons)
 end
+Icon.setFrozenMenu = Icon.setFixedMenu
 
 function Icon:freezeMenu()
 	-- A frozen menu is a menu which is permanently locked in the
